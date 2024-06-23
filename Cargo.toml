@@ -1,0 +1,11 @@
+[package]
+name = "txrx"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0.86"
+fixedstr = "0.5.6"
+pico-args = "0.5.0"
+serial2 = "0.2.26"
+rhexdump = "0.2.0"
