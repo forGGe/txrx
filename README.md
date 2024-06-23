@@ -1,8 +1,7 @@
 # txrx
 
 Sometimes all you need is send bunch of bytes into the serial using specific settings and print
-the response after some time, that's it.
-This utility does exactly that.
+the response after some time. The rxtx utility does exactly that.
 
 ## Building
 
@@ -71,7 +70,7 @@ echo "Hello, serial world!" | txrx /dev/ttyUSB0 -b 9600`
 You can send the serial port incoming data somewhere else:
 
 ```sh
-echo "Hello, serial world!" | txrx /dev/ttyUSB0 -b 9600 -s > /tmp/response.bin`
+echo "Hello, serial world!" | txrx /dev/ttyUSB0 -b 9600 -s > /tmp/response.bin
 ```
 
 ### Piping Responses

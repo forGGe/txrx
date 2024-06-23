@@ -1,11 +1,12 @@
+use anyhow::anyhow;
+use anyhow::Result;
 use fixedstr;
 use pico_args;
+use rhexdump::rhexdumps;
 use serial2;
-use anyhow::Result;
-use anyhow::anyhow;
+use std::io::ErrorKind;
 use std::io::Read;
 use std::io::Write;
-use rhexdump::rhexdumps;
 
 // useful helper
 macro_rules! quiet_eprintln {
@@ -64,6 +65,7 @@ USAGE:
                                 E.g.: /dev/ttyUSB0, /dev/ttyACM0 and such.
 ";
 
+#[derive(Clone)]
 struct ToolArgs {
     port: fixedstr::str64,
     baud: u32,
@@ -83,20 +85,62 @@ fn parse_args() -> Result<ToolArgs, pico_args::Error> {
 
     let args = ToolArgs {
         port: pargs.free_from_str()?,
-        baud: pargs.value_from_str(["-b", "--baud" ])?,
-        cfg: pargs.opt_value_from_str([ "-c", "--config" ])?.unwrap_or("8E1".into()),
+        baud: pargs.value_from_str(["-b", "--baud"])?,
+        cfg: pargs
+            .opt_value_from_str(["-c", "--config"])?
+            .unwrap_or("8E1".into()),
         quiet: pargs.contains(["-q", "--quiet"]),
-        timeout: pargs.opt_value_from_str([ "-t", "--timeout" ])?.unwrap_or(1000),
+        timeout: pargs
+            .opt_value_from_str(["-t", "--timeout"])?
+            .unwrap_or(1000),
         stdout: pargs.contains(["-s", "--stdout"]),
     };
 
+    if args.cfg.len() != 3 {
+        return Err(pico_args::Error::ArgumentParsingFailed {
+            cause: "invalid port config string".to_string(),
+        });
+    }
+
     Ok(args)
+}
+
+impl serial2::IntoSettings for ToolArgs {
+    fn apply_to_settings(self, settings: &mut serial2::Settings) -> std::io::Result<()> {
+        // panic is justified - parse_args() suppose to check for the string size
+
+        match self.cfg.chars().nth(0).unwrap() {
+            '5' => settings.set_char_size(serial2::CharSize::Bits5),
+            '6' => settings.set_char_size(serial2::CharSize::Bits6),
+            '7' => settings.set_char_size(serial2::CharSize::Bits7),
+            '8' => settings.set_char_size(serial2::CharSize::Bits8),
+            _ => return Err(std::io::Error::from(ErrorKind::InvalidInput)),
+        }
+
+        match self.cfg.chars().nth(1).unwrap() {
+            'E' => settings.set_parity(serial2::Parity::Even),
+            'N' => settings.set_parity(serial2::Parity::None),
+            'O' => settings.set_parity(serial2::Parity::Odd),
+            _ => return Err(std::io::Error::from(ErrorKind::InvalidInput)),
+        }
+
+        match self.cfg.chars().nth(2).unwrap() {
+            '1' => settings.set_stop_bits(serial2::StopBits::One),
+            '2' => settings.set_stop_bits(serial2::StopBits::Two),
+            _ => return Err(std::io::Error::from(ErrorKind::InvalidInput)),
+        }
+
+        settings.set_baud_rate(self.baud)?;
+        Ok(())
+    }
 }
 
 //--------------------------------------------------------------------------------------------------
 
 fn main() -> Result<()> {
-    let Ok(args) = parse_args() else { return Err(anyhow!("failed to parse args, aborting...")); };
+    let Ok(args) = parse_args() else {
+        return Err(anyhow!("failed to parse args, aborting..."));
+    };
 
     quiet_eprintln!(args.quiet, "tty: {}", args.port);
     quiet_eprintln!(args.quiet, "baud: {}", args.baud);
@@ -121,7 +165,11 @@ fn main() -> Result<()> {
     port.write(&buf)?;
     buf.clear();
 
-    quiet_eprintln!(args.quiet, "waiting for {} ms to complete read...", args.timeout);
+    quiet_eprintln!(
+        args.quiet,
+        "waiting for {} ms to complete read...",
+        args.timeout
+    );
 
     // TODO: error check: it should be always "Timeout", otherwise something is wrong
     let _ = port.read_to_end(&mut buf);
